@@ -18,6 +18,7 @@ import (
 	"golang.org/x/net/http/httpguts"
 
 	"github.com/quic-go/quic-go"
+	"github.com/enetx/http3/httpcommon"
 )
 
 // Settings are HTTP/3 settings that apply to the underlying connection.
@@ -190,6 +191,10 @@ func (t *Transport) roundTripOpt(req *http.Request, opt RoundTripOpt) (*http.Res
 		return nil, fmt.Errorf("http3: invalid method %q", req.Method)
 	}
 	for k, vv := range req.Header {
+		// Skip validation for special header order keys
+		if k == httpcommon.HeaderOrderKey || k == httpcommon.PHeaderOrderKey {
+			continue
+		}
 		if !httpguts.ValidHeaderFieldName(k) {
 			return nil, fmt.Errorf("http3: invalid http header field name %q", k)
 		}
