@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"net/http/httptrace"
+	"github.com/enetx/http"
+	"github.com/enetx/http/httptrace"
 	"time"
 
 	"github.com/quic-go/quic-go"

@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"maps"
 	"net"
-	"net/http"
+	"github.com/enetx/http"
 	"runtime"
 	"slices"
 	"strconv"

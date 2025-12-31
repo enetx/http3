@@ -3,7 +3,7 @@ package http3
 import (
 	"crypto/tls"
 	"net"
-	"net/http/httptrace"
+	"github.com/enetx/http/httptrace"
 	"net/textproto"
 	"time"
 

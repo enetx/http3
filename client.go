@@ -7,8 +7,8 @@ import (
 	"io"
 	"log/slog"
 	"maps"
-	"net/http"
-	"net/http/httptrace"
+	"github.com/enetx/http"
+	"github.com/enetx/http/httptrace"
 	"net/textproto"
 	"time"
 

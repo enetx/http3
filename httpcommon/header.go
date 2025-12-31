@@ -1,7 +1,7 @@
 package httpcommon
 
 import (
-	"net/http"
+	"github.com/enetx/http"
 	"sort"
 	"strings"
 	"sync"

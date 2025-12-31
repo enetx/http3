@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
+	"github.com/enetx/http"
 	"net/textproto"
 	"net/url"
 	"strconv"

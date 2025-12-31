@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"log/slog"
-	"net/http"
+	"github.com/enetx/http"
 	"net/textproto"
 	"strconv"
 	"strings"
