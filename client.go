@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"maps"
-	"github.com/enetx/http"
-	"github.com/enetx/http/httptrace"
 	"net/textproto"
 	"time"
+
+	"github.com/enetx/g"
+	"github.com/enetx/http"
+	"github.com/enetx/http/httptrace"
 
 	"github.com/enetx/http3/qlog"
 	"github.com/quic-go/quic-go"
@@ -55,7 +56,7 @@ type ClientConn struct {
 
 	// Additional HTTP/3 settings.
 	// It is invalid to specify any settings defined by RFC 9114 (HTTP/3) and RFC 9297 (HTTP Datagrams).
-	additionalSettings map[uint64]uint64
+	additionalSettings g.MapOrd[uint64, uint64]
 
 	// maxResponseHeaderBytes specifies a limit on how many response bytes are
 	// allowed in the server's response header.
@@ -79,7 +80,7 @@ var _ http.RoundTripper = &ClientConn{}
 func newClientConn(
 	conn *quic.Conn,
 	enableDatagrams bool,
-	additionalSettings map[uint64]uint64,
+	additionalSettings g.MapOrd[uint64, uint64],
 	streamHijacker func(FrameType, quic.ConnectionTracingID, *quic.Stream, error) (hijacked bool, err error),
 	uniStreamHijacker func(StreamType, quic.ConnectionTracingID, *quic.ReceiveStream, error) (hijacked bool),
 	maxResponseHeaderBytes int,
@@ -138,14 +139,14 @@ func (c *ClientConn) setupConn() error {
 	b = quicvarint.Append(b, streamTypeControlStream)
 	// send the SETTINGS frame
 	b = (&settingsFrame{
-		Datagram:            c.enableDatagrams,
-		Other:               c.additionalSettings,
-		MaxFieldSectionSize: int64(c.maxResponseHeaderBytes),
+		Datagram: c.enableDatagrams,
+		Other:    c.additionalSettings,
+		// MaxFieldSectionSize: int64(c.maxResponseHeaderBytes), enetx
 	}).Append(b)
 	if c.conn.qlogger != nil {
 		sf := qlog.SettingsFrame{
 			MaxFieldSectionSize: int64(c.maxResponseHeaderBytes),
-			Other:               maps.Clone(c.additionalSettings),
+			Other:               c.additionalSettings.ToMap(),
 		}
 		if c.enableDatagrams {
 			sf.Datagram = pointer(true)
@@ -160,7 +161,9 @@ func (c *ClientConn) setupConn() error {
 	return err
 }
 
-func (c *ClientConn) handleBidirectionalStreams(streamHijacker func(FrameType, quic.ConnectionTracingID, *quic.Stream, error) (hijacked bool, err error)) {
+func (c *ClientConn) handleBidirectionalStreams(
+	streamHijacker func(FrameType, quic.ConnectionTracingID, *quic.Stream, error) (hijacked bool, err error),
+) {
 	for {
 		str, err := c.conn.conn.AcceptStream(context.Background())
 		if err != nil {
@@ -186,7 +189,10 @@ func (c *ClientConn) handleBidirectionalStreams(streamHijacker func(FrameType, q
 					c.logger.Debug("error handling stream", "error", err)
 				}
 			}
-			c.conn.CloseWithError(quic.ApplicationErrorCode(ErrCodeFrameUnexpected), "received HTTP/3 frame on bidirectional stream")
+			c.conn.CloseWithError(
+				quic.ApplicationErrorCode(ErrCodeFrameUnexpected),
+				"received HTTP/3 frame on bidirectional stream",
+			)
 		}()
 	}
 }
@@ -346,27 +352,27 @@ func (c *ClientConn) doRequest(req *http.Request, str *RequestStream) (*http.Res
 		sendingReqFailed = true
 	}
 	if !sendingReqFailed {
-	if req.Body == nil {
-		traceWroteRequest(trace, nil)
-		str.Close()
-	} else {
-		// send the request body asynchronously
-		go func() {
-			contentLength := int64(-1)
-			// According to the documentation for http.Request.ContentLength,
-			// a value of 0 with a non-nil Body is also treated as unknown content length.
-			if req.ContentLength > 0 {
-				contentLength = req.ContentLength
-			}
-			err := c.sendRequestBody(str, req.Body, contentLength)
-			traceWroteRequest(trace, err)
-			if err != nil {
-				if c.logger != nil {
-					c.logger.Debug("error writing request", "error", err)
-				}
-			}
+		if req.Body == nil {
+			traceWroteRequest(trace, nil)
 			str.Close()
-		}()
+		} else {
+			// send the request body asynchronously
+			go func() {
+				contentLength := int64(-1)
+				// According to the documentation for http.Request.ContentLength,
+				// a value of 0 with a non-nil Body is also treated as unknown content length.
+				if req.ContentLength > 0 {
+					contentLength = req.ContentLength
+				}
+				err := c.sendRequestBody(str, req.Body, contentLength)
+				traceWroteRequest(trace, err)
+				if err != nil {
+					if c.logger != nil {
+						c.logger.Debug("error writing request", "error", err)
+					}
+				}
+				str.Close()
+			}()
 		}
 	}
 

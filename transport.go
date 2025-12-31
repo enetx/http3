@@ -8,17 +8,19 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"github.com/enetx/http"
-	"github.com/enetx/http/httptrace"
 	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
 
+	"github.com/enetx/g"
+	"github.com/enetx/http"
+	"github.com/enetx/http/httptrace"
+
 	"golang.org/x/net/http/httpguts"
 
-	"github.com/quic-go/quic-go"
 	"github.com/enetx/http3/httpcommon"
+	"github.com/quic-go/quic-go"
 )
 
 // Settings are HTTP/3 settings that apply to the underlying connection.
@@ -28,7 +30,7 @@ type Settings struct {
 	// Extended CONNECT, RFC 9220
 	EnableExtendedConnect bool
 	// Other settings, defined by the application
-	Other map[uint64]uint64
+	Other g.MapOrd[uint64, uint64]
 }
 
 // RoundTripOpt are options for the Transport.RoundTripOpt method.
@@ -84,7 +86,7 @@ type Transport struct {
 
 	// Additional HTTP/3 settings.
 	// It is invalid to specify any settings defined by RFC 9114 (HTTP/3) and RFC 9297 (HTTP Datagrams).
-	AdditionalSettings map[uint64]uint64
+	AdditionalSettings g.MapOrd[uint64, uint64]
 
 	// MaxResponseHeaderBytes specifies a limit on how many response bytes are
 	// allowed in the server's response header.
@@ -121,7 +123,7 @@ var (
 )
 
 var (
-// ErrNoCachedConn is returned when Transport.OnlyCachedConn is set
+	// ErrNoCachedConn is returned when Transport.OnlyCachedConn is set
 	ErrNoCachedConn = errors.New("http3: no cached connection was available")
 	// ErrTransportClosed is returned when attempting to use a closed Transport
 	ErrTransportClosed = errors.New("http3: transport is closed")
@@ -291,7 +293,10 @@ func canRetryRequest(err error, req *http.Request) (*http.Request, error) {
 		req = &reqCopy
 		return &reqCopy, nil
 	}
-	return nil, fmt.Errorf("http3: Transport: cannot retry err [%w] after Request.Body was written; define Request.GetBody to avoid this error", err)
+	return nil, fmt.Errorf(
+		"http3: Transport: cannot retry err [%w] after Request.Body was written; define Request.GetBody to avoid this error",
+		err,
+	)
 }
 
 // RoundTrip does a round trip.
@@ -299,7 +304,11 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return t.RoundTripOpt(req, RoundTripOpt{})
 }
 
-func (t *Transport) getClient(ctx context.Context, hostname string, onlyCached bool) (rtc *roundTripperWithCount, isReused bool, err error) {
+func (t *Transport) getClient(
+	ctx context.Context,
+	hostname string,
+	onlyCached bool,
+) (rtc *roundTripperWithCount, isReused bool, err error) {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 	if t.closed {

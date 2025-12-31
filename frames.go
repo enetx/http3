@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 
+	"github.com/enetx/g"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3/qlog"
 	"github.com/quic-go/quic-go/qlogwriter"
@@ -148,7 +148,7 @@ func (p *frameParser) ParseNext(qlogger qlogwriter.Recorder) (frame, error) {
 					Raw:      qlog.RawInfo{Length: r.NumRead, PayloadLength: int(l)},
 					Frame:    qlog.Frame{Frame: qlog.UnknownFrame{Type: t}},
 				})
-		}
+			}
 		}
 
 		// skip over the payload
@@ -190,16 +190,21 @@ const (
 type settingsFrame struct {
 	MaxFieldSectionSize int64 // SETTINGS_MAX_FIELD_SECTION_SIZE, -1 if not set
 
-	Datagram        bool              // HTTP Datagrams, RFC 9297
-	ExtendedConnect bool              // Extended CONNECT, RFC 9220
-	Other           map[uint64]uint64 // all settings that we don't explicitly recognize
+	Datagram        bool                     // HTTP Datagrams, RFC 9297
+	ExtendedConnect bool                     // Extended CONNECT, RFC 9220
+	Other           g.MapOrd[uint64, uint64] // all settings that we don't explicitly recognize
 }
 
 func pointer[T any](v T) *T {
 	return &v
 }
 
-func parseSettingsFrame(r *countingByteReader, l uint64, streamID quic.StreamID, qlogger qlogwriter.Recorder) (*settingsFrame, error) {
+func parseSettingsFrame(
+	r *countingByteReader,
+	l uint64,
+	streamID quic.StreamID,
+	qlogger qlogwriter.Recorder,
+) (*settingsFrame, error) {
 	if l > 8*(1<<10) {
 		return nil, fmt.Errorf("unexpected size for SETTINGS frame: %d", l)
 	}
@@ -257,17 +262,17 @@ func parseSettingsFrame(r *countingByteReader, l uint64, streamID quic.StreamID,
 				settingsFrame.Datagram = pointer(frame.Datagram)
 			}
 		default:
-			if _, ok := frame.Other[id]; ok {
+			if frame.Other.Contains(id) {
 				return nil, fmt.Errorf("duplicate setting: %d", id)
 			}
 			if frame.Other == nil {
-				frame.Other = make(map[uint64]uint64)
+				frame.Other = g.NewMapOrd[uint64, uint64]()
 			}
-			frame.Other[id] = val
+			frame.Other.Set(id, val)
 		}
 	}
 	if qlogger != nil {
-		settingsFrame.Other = maps.Clone(frame.Other)
+		settingsFrame.Other = frame.Other.ToMap()
 
 		qlogger.RecordEvent(qlog.FrameParsed{
 			StreamID: streamID,
@@ -284,10 +289,11 @@ func parseSettingsFrame(r *countingByteReader, l uint64, streamID quic.StreamID,
 func (f *settingsFrame) Append(b []byte) []byte {
 	b = quicvarint.Append(b, 0x4)
 	var l int
-	if f.MaxFieldSectionSize >= 0 {
+	if f.MaxFieldSectionSize > 0 { // enetx
+		// if f.MaxFieldSectionSize >= 0 {
 		l += quicvarint.Len(settingMaxFieldSectionSize) + quicvarint.Len(uint64(f.MaxFieldSectionSize))
 	}
-	for id, val := range f.Other {
+	for id, val := range f.Other.Iter() {
 		l += quicvarint.Len(id) + quicvarint.Len(val)
 	}
 	if f.Datagram {
@@ -297,7 +303,8 @@ func (f *settingsFrame) Append(b []byte) []byte {
 		l += quicvarint.Len(settingExtendedConnect) + quicvarint.Len(1)
 	}
 	b = quicvarint.Append(b, uint64(l))
-	if f.MaxFieldSectionSize >= 0 {
+	if f.MaxFieldSectionSize > 0 {
+		// if f.MaxFieldSectionSize >= 0 { // enetx
 		b = quicvarint.Append(b, settingMaxFieldSectionSize)
 		b = quicvarint.Append(b, uint64(f.MaxFieldSectionSize))
 	}
@@ -309,7 +316,7 @@ func (f *settingsFrame) Append(b []byte) []byte {
 		b = quicvarint.Append(b, settingExtendedConnect)
 		b = quicvarint.Append(b, 1)
 	}
-	for id, val := range f.Other {
+	for id, val := range f.Other.Iter() {
 		b = quicvarint.Append(b, id)
 		b = quicvarint.Append(b, val)
 	}
@@ -320,7 +327,12 @@ type goAwayFrame struct {
 	StreamID quic.StreamID
 }
 
-func parseGoAwayFrame(r *countingByteReader, l uint64, streamID quic.StreamID, qlogger qlogwriter.Recorder) (*goAwayFrame, error) {
+func parseGoAwayFrame(
+	r *countingByteReader,
+	l uint64,
+	streamID quic.StreamID,
+	qlogger qlogwriter.Recorder,
+) (*goAwayFrame, error) {
 	frame := &goAwayFrame{}
 	startLen := r.NumRead
 	id, err := quicvarint.Read(r)

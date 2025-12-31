@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"maps"
 	"net"
-	"github.com/enetx/http"
 	"runtime"
 	"slices"
 	"strconv"
@@ -17,6 +15,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/enetx/g"
+	"github.com/enetx/http"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3/qlog"
@@ -149,7 +150,7 @@ type Server struct {
 
 	// AdditionalSettings specifies additional HTTP/3 settings.
 	// It is invalid to specify any settings defined by RFC 9114 (HTTP/3) and RFC 9297 (HTTP Datagrams).
-	AdditionalSettings map[uint64]uint64
+	AdditionalSettings g.MapOrd[uint64, uint64]
 
 	// StreamHijacker, when set, is called for the first unknown frame parsed on a bidirectional stream.
 	// It is called right after parsing the frame type.
@@ -463,7 +464,7 @@ func (s *Server) handleConn(conn *quic.Conn) error {
 		sf := qlog.SettingsFrame{
 			MaxFieldSectionSize: int64(s.maxHeaderBytes()),
 			ExtendedConnect:     pointer(true),
-			Other:               maps.Clone(s.AdditionalSettings),
+			Other:               s.AdditionalSettings.ToMap(),
 		}
 		if s.EnableDatagrams {
 			sf.Datagram = pointer(true)
@@ -607,7 +608,10 @@ func (s *Server) handleRequest(
 	}
 	hf, ok := frame.(*headersFrame)
 	if !ok {
-		conn.CloseWithError(quic.ApplicationErrorCode(ErrCodeFrameUnexpected), "expected first frame to be a HEADERS frame")
+		conn.CloseWithError(
+			quic.ApplicationErrorCode(ErrCodeFrameUnexpected),
+			"expected first frame to be a HEADERS frame",
+		)
 		return
 	}
 	if hf.Length > uint64(s.maxHeaderBytes()) {
@@ -640,8 +644,8 @@ func (s *Server) handleRequest(
 			str.CancelRead(quic.StreamErrorCode(ErrCodeExcessiveLoad))
 			// send a 431 Response (Request Header Fields Too Large)
 			s.rejectWithHeaderFieldsTooLarge(str, conn, qlogger)
-		return
-	}
+			return
+		}
 
 		errCode := ErrCodeMessageError
 		var qpackErr *qpackError
