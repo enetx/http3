@@ -242,7 +242,7 @@ func parseSettingsFrame(r *countingByteReader, l uint64, streamID quic.StreamID,
 			if frame.Other == nil {
 				frame.Other = g.NewMapOrd[uint64, uint64]()
 			}
-			frame.Other.Set(id, val)
+			frame.Other.Insert(id, val)
 		}
 	}
 	if qlogger != nil {
