@@ -246,7 +246,7 @@ func parseSettingsFrame(r *countingByteReader, l uint64, streamID quic.StreamID,
 		}
 	}
 	if qlogger != nil {
-		settingsFrame.Other = frame.Other.ToMap()
+		settingsFrame.Other = frame.Other.Map()
 
 		qlogger.RecordEvent(qlog.FrameParsed{
 			StreamID: streamID,

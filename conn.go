@@ -93,7 +93,7 @@ func (c *rawConn) openControlStream(settings *settingsFrame) (*quic.SendStream, 
 	if c.qlogger != nil {
 		sf := qlog.SettingsFrame{
 			MaxFieldSectionSize: settings.MaxFieldSectionSize,
-			Other:               settings.Other.ToMap().Std(),
+			Other:               settings.Other.Map().Std(),
 	}
 		if settings.Datagram {
 			sf.Datagram = pointer(true)
